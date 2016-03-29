@@ -64,6 +64,11 @@ public class ReactNativeMapboxGLModule extends ReactContextBaseJavaModule {
 
         return constants;
     }
+    @ReactMethod
+    public void addMarker() {
+        aPackage.getManager().createMarker(aPackage.getManager().getMapView());
+    }
+
 
     @ReactMethod
     public void setDirectionAnimated(int mapRef, int direction) {
@@ -131,12 +136,6 @@ public class ReactNativeMapboxGLModule extends ReactContextBaseJavaModule {
     public void getCenterCoordinateZoomLevel(int mapRef, Callback successCallback) {
         WritableMap location = aPackage.getManager().getCenterCoordinateZoomLevel(aPackage.getManager().getMapView());
         successCallback.invoke(location);
-    }
-
-    @ReactMethod
-    public void getBounds(int mapRef, Callback successCallback) {
-      WritableMap bounds = aPackage.getManager().getBounds(aPackage.getManager().getMapView());
-      successCallback.invoke(bounds);
     }
 
     public void setPackage(ReactNativeMapboxGLPackage aPackage) {
