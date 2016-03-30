@@ -2,6 +2,7 @@
 package com.mapbox.reactnativemapboxgl;
 
 import android.graphics.Color;
+import android.os.Handler;
 import android.util.Log;
 import android.os.StrictMode;
 import android.location.Location;
@@ -10,6 +11,7 @@ import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.uimanager.annotations.ReactProp;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
@@ -37,8 +39,10 @@ import java.io.InputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.net.HttpURLConnection;
+import java.util.ArrayList;
 import java.util.Dictionary;
 import java.util.HashMap;
+import java.util.Map;
 
 import android.graphics.drawable.BitmapDrawable;
 import javax.annotation.Nullable;
@@ -67,10 +71,16 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
     public static final String PROP_COMPASS_IS_HIDDEN = "compassIsHidden";
     public static final String PROP_LOGO_IS_HIDDEN = "logoIsHidden";
     public static final String PROP_ATTRIBUTION_BUTTON_IS_HIDDEN = "attributionButtonIsHidden";
+    public static final String APP_DATA = "appData";
     private MapView mapView;
     private HashMap<String, String> annotationsStateIndex = new HashMap();
     private HashMap<String, Annotation> annotationsIdIndex = new HashMap();
-    private ReadableMap currentAnnotation;
+    private String currentAnnotationId;
+    private ArrayList<ReadableMap> annotations;
+    private ThemedReactContext reactContext;
+    private ReadableMap appData;
+    private HashMap<String, Icon> annotationsIcons = new HashMap();
+    private HashMap<String, String> annotationsIconsUrls = new HashMap();
 
 
     @Override
@@ -80,11 +90,27 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
 
     @Override
     public MapView createViewInstance(ThemedReactContext context) {
+        reactContext = context;
         mapView = new MapView(context, "pk.foo");
         mapView.onCreate(null);
         StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
         StrictMode.setThreadPolicy(policy);
         return mapView;
+    }
+
+    @ReactProp(name = APP_DATA)
+    public void setAppData(MapView view, @Nullable ReadableMap value) {
+        if (value == null) {
+            return;
+        }
+        appData = value;
+        if (appData.hasKey("normalPinImageUrl")) {
+            annotationsIconsUrls.put("normalPinImageUrl", appData.getString("normalPinImageUrl"));
+        }
+
+        if (appData.hasKey("selectedPinImageUrl")) {
+            annotationsIconsUrls.put("selectedPinImageUrl", appData.getString("selectedPinImageUrl"));
+        }
     }
 
     @ReactProp(name = PROP_ACCESS_TOKEN)
@@ -114,18 +140,35 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
 
     @ReactProp(name = PROP_ANNOTATIONS)
     public void setAnnotationClear(MapView view, @Nullable ReadableArray value) {
-        setAnnotations(view, value, true);
+        setAnnotations(view, value);
     }
 
-    public void createMarker(MapView view) {
-        MarkerOptions marker = new MarkerOptions();
+    public void updateMarker(final MapView view, final ReadableMap marker) {
+        if (!marker.hasKey("subtitle")) {
+            return;
+        }
+        final String id = marker.getString("subtitle");
+        final Annotation annotation = annotationsIdIndex.get(id);
 
-        marker.position(new LatLng(46.771622, 23.591810));
-        marker.title("Hello world");
-        marker.snippet("Welcome to my marker");
-        view.addMarker(marker);
+        //update annotation from using main thread
+        Handler mainHandler = new Handler(reactContext.getMainLooper());
+        Runnable myRunnable = new Runnable() {
+            @Override
+            public void run() {
+                Log.d("marker", marker.toString());
+                if (currentAnnotationId != null) {
+                    Marker m = (Marker) annotationsIdIndex.get(currentAnnotationId);
+                    removeAnnotation(view, m);
+                    renderAnnotation(view, annotations.get(Integer.parseInt(currentAnnotationId)), currentAnnotationId);
+                }
+
+                renderAnnotation(view, marker, id);
+                removeAnnotation(view, annotation);
+                currentAnnotationId = id;
+            }
+        };
+        mainHandler.post(myRunnable);
     }
-
 
     public void renderAnnotation(MapView view, ReadableMap annotation, String annotationId) {
         String type = annotation.getString("type");
@@ -145,20 +188,26 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
             }
             if (annotation.hasKey("annotationImage")) {
                 ReadableMap annotationImage = annotation.getMap("annotationImage");
-                String annotationURL = annotationImage.getString("url");
-                try {
-                    Drawable image = drawableFromUrl(mapView, annotationURL);
-                    IconFactory iconFactory = view.getIconFactory();
-                    Icon icon = iconFactory.fromDrawable(image);
-                    marker.icon(icon);
-                } catch (Exception e) {
-                    e.printStackTrace();
+                String annotationImageUrl = annotationImage.getString("url");
+
+
+                if (!annotationsIcons.containsKey(annotationImageUrl)) {
+                    try {
+                        Drawable image = drawableFromUrl(mapView, annotationsIconsUrls.get(annotationImageUrl));
+                        IconFactory iconFactory = view.getIconFactory();
+                        annotationsIcons.put(annotationImageUrl, iconFactory.fromDrawable(image));
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                if (annotationsIcons.containsKey(annotationImageUrl)) {
+                    marker.icon(annotationsIcons.get(annotationImageUrl));
                 }
             }
 
             Marker m = view.addMarker(marker);
             annotationsIdIndex.put(annotationId, m);
-            annotationsStateIndex.put(annotationId, "rendered");
 
         } else if (type.equals("polyline")) {
             int coordSize = annotation.getArray("coordinates").size();
@@ -183,7 +232,6 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
 
             Polyline p = view.addPolyline(polyline);
             annotationsIdIndex.put(annotationId, p);
-            annotationsStateIndex.put(annotationId, "rendered");
         } else if (type.equals("polygon")) {
             int coordSize = annotation.getArray("coordinates").size();
             PolygonOptions polygon = new PolygonOptions();
@@ -207,51 +255,38 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
 
             Polygon pl = view.addPolygon(polygon);
             annotationsIdIndex.put(annotationId, pl);
-            annotationsStateIndex.put(annotationId, "rendered");
         }
     }
 
-    public void setAnnotations(MapView view, @Nullable ReadableArray value, boolean clearMap) {
+    public void renderAnnotationAsync(MapView view, @Nullable ReadableMap annotation) {
+        String annotationId = annotation.getString("index");
+        renderAnnotation(view, annotation, annotationId);
+    }
+
+    public void setAnnotations(MapView view, @Nullable ReadableArray value) {
         if (value == null || value.size() < 1) {
             Log.e(REACT_CLASS, "Error: No annotations");
-        } else {
-//            if (clearMap) {
-//                view.removeAllAnnotations();
-//            }
+            return;
+        }
+
+        if(annotations == null) {
+            annotations = new ArrayList<ReadableMap>();
             int size = value.size();
-
-            if (currentAnnotation != null) {
-                removeAnnotation(view, currentAnnotation, currentAnnotation.getString("id"));
-            }
-
             for (int i = 0; i < size; i++) {
                 ReadableMap annotation = value.getMap(i);
-                String annotationId = annotation.getString("id");
-                String annotationState = annotationsStateIndex.get(annotationId);
-                Boolean annotationIsActive = false;
-                if (annotation.hasKey("active")) {
-                    annotationIsActive = annotation.getBoolean("active");
-                }
-
-                if (annotationIsActive) {
-                    removeAnnotation(view, annotation, annotationId);
-                    renderAnnotation(view, annotation, annotationId);
-                    currentAnnotation = annotation;
-                    annotationsStateIndex.put(annotationId, "rerendered");
-
-                } else if (annotationState == null || !annotationState.equals("rendered")) {
-                    renderAnnotation(view, annotation, annotationId);
-                }
+                renderAnnotationAsync(view, annotation);
+                int id = Integer.parseInt(annotation.getString("subtitle"));
+                annotations.add(id, annotation);
             }
         }
     }
 
-    public void removeAnnotation(MapView view, ReadableMap annotation, String annotationId) {
-        Annotation a = annotationsIdIndex.get(annotationId);
-        if (a == null) {
+    public void removeAnnotation(MapView view, Annotation annotation) {
+        if (annotation == null) {
             return;
         }
-        view.removeAnnotation(a);
+
+        view.removeAnnotation(annotation);
     }
 
     @ReactProp(name = PROP_DEBUG_ACTIVE, defaultBoolean = false)
@@ -269,18 +304,18 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
         view.addOnMapChangedListener(new MapView.OnMapChangedListener() {
             @Override
             public void onMapChanged(int change) {
-                if (change == MapView.REGION_DID_CHANGE || change == MapView.REGION_DID_CHANGE_ANIMATED) {
-                    WritableMap event = Arguments.createMap();
-                    WritableMap location = Arguments.createMap();
-                    location.putDouble("latitude", view.getCenterCoordinate().getLatitude());
-                    location.putDouble("longitude", view.getCenterCoordinate().getLongitude());
-                    location.putDouble("zoom", view.getZoomLevel());
-                    event.putMap("src", location);
-                    ReactContext reactContext = (ReactContext) view.getContext();
-                    reactContext
-                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                            .emit("onRegionChange", event);
-                }
+            if (change == MapView.REGION_DID_CHANGE || change == MapView.REGION_DID_CHANGE_ANIMATED) {
+                WritableMap event = Arguments.createMap();
+                WritableMap location = Arguments.createMap();
+                location.putDouble("latitude", view.getCenterCoordinate().getLatitude());
+                location.putDouble("longitude", view.getCenterCoordinate().getLongitude());
+                location.putDouble("zoom", view.getZoomLevel());
+                event.putMap("src", location);
+                ReactContext reactContext = (ReactContext) view.getContext();
+                reactContext
+                        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                        .emit("onRegionChange", event);
+            }
             }
         });
     }
@@ -319,6 +354,8 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
                 markerObject.putString("subtitle", marker.getSnippet());
                 markerObject.putDouble("latitude", marker.getPosition().getLatitude());
                 markerObject.putDouble("longitude", marker.getPosition().getLongitude());
+                markerObject.putDouble("markerId", marker.getId());
+
                 event.putMap("src", markerObject);
                 ReactContext reactContext = (ReactContext) view.getContext();
                 reactContext

@@ -47,6 +47,9 @@ var MapMixins = {
   getBounds(mapRef, callback) {
     NativeModules.MapboxGLManager.getBounds(React.findNodeHandle(this.refs[mapRef]), callback);
   },
+  updateMarker(mapRef, id) {
+    NativeModules.MapboxGLManager.updateMarker(React.findNodeHandle(this.refs[mapRef]), id);
+  },
   mapStyles: NativeModules.MapboxGLManager.mapStyles,
   userTrackingMode: NativeModules.MapboxGLManager.userTrackingMode
 };
@@ -64,7 +67,8 @@ var ReactMapView = requireNativeComponent('RCTMapbox', {
         alpha: React.PropTypes.number,
         fillColor: React.PropTypes.string,
         strokeColor: React.PropTypes.string,
-        strokeWidth: React.PropTypes.number
+        strokeWidth: React.PropTypes.number,
+        ceva: React.PropTypes.string
       })),
       centerCoordinate: React.PropTypes.shape({
         latitude: React.PropTypes.number.isRequired,
@@ -99,7 +103,9 @@ var ReactMapView = requireNativeComponent('RCTMapbox', {
       accessibilityComponentType: React.PropTypes.string,
       accessibilityLabel: React.PropTypes.string,
       testID: React.PropTypes.string,
-      importantForAccessibility: React.PropTypes.string
+      importantForAccessibility: React.PropTypes.string,
+      appData: React.PropTypes.object,
+      //updateMarker: React.PropTypes.func,
     },
     defaultProps() {
       return {
@@ -117,7 +123,8 @@ var ReactMapView = requireNativeComponent('RCTMapbox', {
         zoomEnabled: true,
         zoomLevel: 0,
         tilt: 0,
-        compassIsHidden: false
+        compassIsHidden: false,
+        dospit: 'uiiuuuuu',
       };
     }
 });
@@ -131,7 +138,7 @@ var ReactMapViewWrapper = React.createClass({
     onRegionChange: React.PropTypes.func,
     onUserLocationChange: React.PropTypes.func,
     onOpenAnnotation: React.PropTypes.func,
-    onLongPress: React.PropTypes.func
+    onLongPress: React.PropTypes.func,
   },
   componentWillMount: function() {
     this.addListenerOn(DeviceEventEmitter,'onRegionChange', this.handleOnChange);

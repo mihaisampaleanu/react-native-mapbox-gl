@@ -64,11 +64,11 @@ public class ReactNativeMapboxGLModule extends ReactContextBaseJavaModule {
 
         return constants;
     }
-    @ReactMethod
-    public void addMarker() {
-        aPackage.getManager().createMarker(aPackage.getManager().getMapView());
-    }
 
+    @ReactMethod
+    public void updateMarker(int mapRef, ReadableMap marker) {
+        aPackage.getManager().updateMarker(aPackage.getManager().getMapView(), marker);
+    }
 
     @ReactMethod
     public void setDirectionAnimated(int mapRef, int direction) {
@@ -94,7 +94,7 @@ public class ReactNativeMapboxGLModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void addAnnotations(int mapRef, ReadableArray value) {
-        aPackage.getManager().setAnnotations(aPackage.getManager().getMapView(), value, false);
+        aPackage.getManager().setAnnotations(aPackage.getManager().getMapView(), value);
     }
 
     @ReactMethod
