@@ -124,7 +124,6 @@ var ReactMapView = requireNativeComponent('RCTMapbox', {
         zoomLevel: 0,
         tilt: 0,
         compassIsHidden: false,
-        dospit: 'uiiuuuuu',
       };
     }
 });
