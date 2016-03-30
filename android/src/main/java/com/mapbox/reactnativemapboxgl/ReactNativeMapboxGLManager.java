@@ -1,4 +1,3 @@
-
 package com.mapbox.reactnativemapboxgl;
 
 import android.graphics.Color;
@@ -144,9 +143,12 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
     }
 
     public void updateMarker(final MapView view, final ReadableMap marker) {
-        if (!marker.hasKey("subtitle")) {
+        String typeOf = String.valueOf(marker.getType("type"));
+
+        if (!marker.hasKey("subtitle") || (typeOf.equals("point"))) {
             return;
         }
+
         final String id = marker.getString("subtitle");
         final Annotation annotation = annotationsIdIndex.get(id);
 
@@ -155,7 +157,6 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
         Runnable myRunnable = new Runnable() {
             @Override
             public void run() {
-                Log.d("marker", marker.toString());
                 if (currentAnnotationId != null) {
                     Marker m = (Marker) annotationsIdIndex.get(currentAnnotationId);
                     removeAnnotation(view, m);
@@ -275,8 +276,11 @@ public class ReactNativeMapboxGLManager extends SimpleViewManager<MapView> {
             for (int i = 0; i < size; i++) {
                 ReadableMap annotation = value.getMap(i);
                 renderAnnotationAsync(view, annotation);
-                int id = Integer.parseInt(annotation.getString("subtitle"));
-                annotations.add(id, annotation);
+                if (annotation.getString("type").equals("point")) {
+                    int id = Integer.parseInt(annotation.getString("subtitle"));
+                    annotations.add(id, annotation);
+                }
+
             }
         }
     }
